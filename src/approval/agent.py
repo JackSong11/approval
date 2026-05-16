@@ -1,4 +1,4 @@
-"""Agent core loop — dual backend (Anthropic + OpenAI compatible), streaming,
+"""Agent core loop — dual backend (OpenAI compatible), streaming,
 4-layer compression, plan mode, sub-agents, budget control.
 Mirrors Claude Code's agent architecture."""
 
@@ -242,18 +242,6 @@ class Agent:
 
     def _build_side_query(self):
         """Build a sideQuery callable for memory recall, works with both backends."""
-        if self._anthropic_client:
-            client = self._anthropic_client
-            model = self.model
-
-            async def _sq(system: str, user_message: str) -> str:
-                resp = await client.messages.create(
-                    model=model, max_tokens=256, system=system,
-                    messages=[{"role": "user", "content": user_message}],
-                )
-                return "".join(b.text for b in resp.content if b.type == "text")
-
-            return _sq
         if self._openai_client:
             client = self._openai_client
             model = self.model
@@ -291,7 +279,7 @@ class Agent:
             self._pre_plan_mode = None
             self._plan_file_path = None
             self._system_prompt = self._base_system_prompt
-            if self.use_openai and self._openai_messages:
+            if self._openai_messages:
                 self._openai_messages[0]["content"] = self._system_prompt
             print_info(f"Exited plan mode → {self.permission_mode} mode")
             return self.permission_mode
@@ -300,7 +288,7 @@ class Agent:
             self.permission_mode = "plan"
             self._plan_file_path = self._generate_plan_file_path()
             self._system_prompt = self._base_system_prompt + self._build_plan_mode_prompt()
-            if self.use_openai and self._openai_messages:
+            if self._openai_messages:
                 self._openai_messages[0]["content"] = self._system_prompt
             print_info(f"Entered plan mode. Plan file: {self._plan_file_path}")
             return "plan"
@@ -425,14 +413,8 @@ class Agent:
             await self._compact_conversation()
 
     async def _compact_conversation(self) -> None:
-        if self.use_openai:
-            await self._compact_openai()
-        else:
-            await self._compact_anthropic()
+        await self._compact_openai()
         print_info("Conversation compacted.")
-
-    async def _compact_anthropic(self) -> None:
-        pass
 
     async def _compact_openai(self) -> None:
         if len(self._openai_messages) < 5:
@@ -464,19 +446,11 @@ class Agent:
     # ─── Multi-tier compression pipeline ──────────────────────
 
     def _run_compression_pipeline(self) -> None:
-        if self.use_openai:
-            self._budget_tool_results_openai()
-            self._snip_stale_results_openai()
-            self._microcompact_openai()
-        else:
-            self._budget_tool_results_anthropic()
-            self._snip_stale_results_anthropic()
-            self._microcompact_anthropic()
+        self._budget_tool_results_openai()
+        self._snip_stale_results_openai()
+        self._microcompact_openai()
 
     # Tier 1: Budget tool results
-    def _budget_tool_results_anthropic(self) -> None:
-        pass
-
     def _budget_tool_results_openai(self) -> None:
         # 用于动态压缩（截断）发送给 OpenAI API 的工具返回结果（Tool Results）。其目的是在上下文窗口（Context Window）压力较大时，通过牺牲部分中间细节来节省 Token，防止超出模型限制。
         utilization = self.last_input_token_count / self.effective_window if self.effective_window else 0
@@ -491,9 +465,6 @@ class Agent:
                                  msg["content"][-keep:]
 
     # Tier 2: Snip stale results
-    def _snip_stale_results_anthropic(self) -> None:
-        pass
-
     def _snip_stale_results_openai(self) -> None:
         utilization = self.last_input_token_count / self.effective_window if self.effective_window else 0
         if utilization < SNIP_THRESHOLD:
@@ -515,9 +486,6 @@ class Agent:
             self._openai_messages[tool_msgs[i]]["content"] = SNIP_PLACEHOLDER
 
     # Tier 3: Microcompact
-    def _microcompact_anthropic(self) -> None:
-        pass
-
     def _microcompact_openai(self) -> None:
         if not self.last_api_call_time or (time.time() - self.last_api_call_time) < MICROCOMPACT_IDLE_S:
             return
@@ -529,15 +497,6 @@ class Agent:
         clear_count = len(tool_msgs) - KEEP_RECENT_RESULTS
         for i in range(max(0, clear_count)):
             self._openai_messages[tool_msgs[i]]["content"] = "[Old result cleared]"
-
-    def _find_tool_use_by_id(self, tool_use_id: str) -> dict | None:
-        for msg in self._anthropic_messages:
-            if msg.get("role") != "assistant" or not isinstance(msg.get("content"), list):
-                continue
-            for block in msg["content"]:
-                if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id") == tool_use_id:
-                    return {"name": block["name"], "input": block.get("input", {})}
-        return None
 
     def _find_tool_use_by_id_openai(self, tool_use_id: str) -> dict | None:
         # 遍历 OpenAI 消息历史
@@ -748,10 +707,8 @@ IMPORTANT: When your plan is complete, you MUST call exit_plan_mode. Do NOT ask 
 
     def _clear_history_keep_system(self) -> None:
         """Clear history but keep system prompt (used for clear-context plan approval)."""
-        self._anthropic_messages = []
         self._openai_messages = []
-        if self.use_openai:
-            self._openai_messages.append({"role": "system", "content": self._system_prompt})
+        self._openai_messages.append({"role": "system", "content": self._system_prompt})
         self.last_input_token_count = 0
 
     async def _execute_agent_tool(self, inp: dict) -> str:
@@ -780,25 +737,6 @@ IMPORTANT: When your plan is complete, you MUST call exit_plan_mode. Do NOT ask 
         except Exception as e:
             print_sub_agent_end(agent_type, description)
             return f"Sub-agent error: {e}"
-
-    # ─── Anthropic backend ───────────────────────────────────────
-
-    async def _chat_anthropic(self, user_message: str) -> None:
-        pass
-
-    @staticmethod
-    def _block_to_dict(block) -> dict:
-        """Convert an Anthropic content block to a plain dict for storage."""
-        if block.type == "text":
-            return {"type": "text", "text": block.text}
-        if block.type == "tool_use":
-            return {"type": "tool_use", "id": block.id, "name": block.name,
-                    "input": dict(block.input) if hasattr(block.input, 'items') else block.input}
-        # Fallback
-        return {"type": block.type}
-
-    async def _call_anthropic_stream(self, on_tool_block_complete=None):
-        pass
 
     # ─── OpenAI-compatible backend ───────────────────────────────
 
@@ -895,7 +833,8 @@ IMPORTANT: When your plan is complete, you MUST call exit_plan_mode. Do NOT ask 
                         oai_checked.append({"tc": tc, "fn": fn_name, "inp": inp, "allowed": False,
                                             "result": f"Action denied: {perm.get('message', '')}"})
                         continue
-                    if perm["action"] == "confirm" and perm.get("message") and perm["message"] not in self._confirmed_paths:
+                    if perm["action"] == "confirm" and perm.get("message") and perm[
+                        "message"] not in self._confirmed_paths:
                         confirmed = await self._confirm_dangerous(perm["message"])
                         if not confirmed:
                             oai_checked.append({"tc": tc, "fn": fn_name, "inp": inp, "allowed": False,
