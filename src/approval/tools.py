@@ -18,11 +18,11 @@ from approval.memory import get_memory_dir
 
 PermissionMode = str  # "default" | "plan" | "acceptEdits" | "bypassPermissions" | "dontAsk"
 
-READ_TOOLS = {"read_file", "list_files", "grep_search", "web_fetch"}
+READ_TOOLS = {"read_file", "list_files", "grep_search"}
 EDIT_TOOLS = {"write_file", "edit_file"}
 
 # Concurrency-safe tools can run in parallel (read-only, no side effects)
-CONCURRENCY_SAFE_TOOLS = {"read_file", "list_files", "grep_search", "web_fetch"}
+CONCURRENCY_SAFE_TOOLS = {"read_file", "list_files", "grep_search"}
 
 IS_WIN = sys.platform == "win32"
 
@@ -123,18 +123,6 @@ tool_definitions: list[ToolDef] = [
                 "args": {"type": "string", "description": "Optional arguments to pass to the skill"},
             },
             "required": ["skill_name"],
-        },
-    },
-    {
-        "name": "web_fetch",
-        "description": "Fetch a URL and return its content as text. For HTML pages, tags are stripped to return readable text. For JSON/text responses, content is returned directly.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "The URL to fetch"},
-                "max_length": {"type": "number", "description": "Maximum content length in characters (default 50000)"},
-            },
-            "required": ["url"],
         },
     },
     {
@@ -447,40 +435,6 @@ def _run_shell(inp: dict) -> str:
         return f"Error: {e}"
 
 
-def _web_fetch(inp: dict) -> str:
-    import urllib.request
-    import urllib.error
-
-    url = inp.get("url", "")
-    max_length = inp.get("max_length", 50000)
-    req = urllib.request.Request(url, headers={"User-Agent": "mini-claude/1.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            content_type = resp.headers.get("Content-Type", "")
-            text = resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as e:
-        return f"HTTP error: {e.code} {e.reason}"
-    except urllib.error.URLError as e:
-        return f"Error fetching {url}: {e.reason}"
-    except Exception as e:
-        return f"Error fetching {url}: {e}"
-
-    if "html" in content_type:
-        text = re.sub(r"<script[\s\S]*?</script>", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"<style[\s\S]*?</style>", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"<[^>]*>", " ", text)
-        text = text.replace("&nbsp;", " ").replace("&amp;", "&")
-        text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
-        text = re.sub(r"\s{2,}", " ", text)
-        text = re.sub(r"\n{3,}", "\n\n", text)
-        text = text.strip()
-
-    if len(text) > max_length:
-        text = text[:max_length] + f"\n\n[... truncated at {max_length} characters]"
-
-    return text or "(empty response)"
-
-
 # ─── Dangerous command patterns ─────────────────────────────
 
 DANGEROUS_PATTERNS = [
@@ -709,7 +663,6 @@ async def execute_tool(
         "list_files": _list_files,
         "grep_search": _grep_search,
         "run_shell": _run_shell,
-        "web_fetch": _web_fetch,
     }
     handler = handlers.get(name)
     if not handler:
