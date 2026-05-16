@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from minicode.frontmatter import parse_frontmatter
-from minicode.tools import tool_definitions
+from approval.frontmatter import parse_frontmatter
+from approval.tools import tool_definitions
 
 # ─── Read-only tools (for explore and plan agents) ──────────
 

@@ -10,11 +10,12 @@ from rich.console import Console
 
 console = Console(highlight=False)
 
+
 # ─── Basic output ──────────────────────────────────────────
 
 
 def print_welcome() -> None:
-    console.print("\n  [bold cyan]Mini Claude Code[/bold cyan][dim] — A minimal coding agent[/dim]\n")
+    console.print("\n  [bold cyan]Mini Approval Agent[/bold cyan][dim] — A minimal approval agent[/dim]\n")
     console.print("[dim]  Type your request, or 'exit' to quit.[/dim]")
     console.print("[dim]  Commands: /clear /plan /cost /compact /memory /skills[/dim]\n")
 

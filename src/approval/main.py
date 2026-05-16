@@ -11,45 +11,11 @@ import sys
 from approval.agent import Agent
 from approval.ui import print_welcome, print_user_prompt, print_error, print_info, print_plan_for_approval, \
     print_plan_approval_options
-from approval.session import load_session, get_latest_session_id
 from approval.memory import list_memories
 from approval.skills import discover_skills, resolve_skill_prompt, get_skill_by_name, execute_skill
 from dotenv import load_dotenv
 
 load_dotenv()
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="mini-approval",
-        description="Mini approval — a minimal approval agent",
-        add_help=False,
-    )
-    parser.add_argument("prompt", nargs="*", help="One-shot prompt")
-    parser.add_argument("--yolo", "-y", action="store_true", help="Skip all confirmation prompts")
-    parser.add_argument("--plan", action="store_true", help="Plan mode: read-only")
-    parser.add_argument("--accept-edits", action="store_true", help="Auto-approve file edits")
-    parser.add_argument("--dont-ask", action="store_true", help="Auto-deny confirmations (for CI)")
-    parser.add_argument("--thinking", action="store_true", help="Enable extended thinking")
-    parser.add_argument("--model", "-m", default=None, help="Model to use")
-    parser.add_argument("--api-base", default=None, help="OpenAI-compatible API base URL")
-    parser.add_argument("--resume", action="store_true", help="Resume last session")
-    parser.add_argument("--max-cost", type=float, default=None, help="Max USD spend")
-    parser.add_argument("--max-turns", type=int, default=None, help="Max agentic turns")
-    parser.add_argument("--help", "-h", action="store_true", help="Show help")
-    return parser.parse_args()
-
-
-def _resolve_permission_mode(args: argparse.Namespace) -> str:
-    if args.yolo:
-        return "bypassPermissions"
-    if args.plan:
-        return "plan"
-    if args.accept_edits:
-        return "acceptEdits"
-    if args.dont_ask:
-        return "dontAsk"
-    return "default"
 
 
 async def run_repl(agent: Agent) -> None:
@@ -194,117 +160,33 @@ async def run_repl(agent: Agent) -> None:
 
 
 def main() -> None:
-    args = parse_args()
-
-    if args.help:
-        print("""
-Usage: mini-approval [options] [prompt]
-
-Options:
-  --yolo, -y          Skip all confirmation prompts (bypassPermissions mode)
-  --plan              Plan mode: read-only, describe changes without executing
-  --accept-edits      Auto-approve file edits, still confirm dangerous shell
-  --dont-ask          Auto-deny anything needing confirmation (for CI)
-  --thinking          Enable extended thinking (Anthropic only)
-  --model, -m         Model to use (default: claude-opus-4-6, or MINI_CLAUDE_MODEL env)
-  --api-base URL      Use OpenAI-compatible API endpoint (key via env var)
-  --resume            Resume the last session
-  --max-cost USD      Stop when estimated cost exceeds this amount
-  --max-turns N       Stop after N agentic turns
-  --help, -h          Show this help
-
-REPL commands:
-  /clear              Clear conversation history
-  /plan               Toggle plan mode (read-only <-> normal)
-  /cost               Show token usage and cost
-  /compact            Manually compact conversation
-  /memory             List saved memories
-  /skills             List available skills
-  /<skill-name>       Invoke a skill (e.g. /commit "fix types")
-
-Examples:
-  mini-claude "fix the bug in src/app.ts"
-  mini-claude --yolo "run all tests and fix failures"
-  mini-claude --plan "how would you refactor this?"
-  mini-claude --max-cost 0.50 --max-turns 20 "implement feature X"
-  OPENAI_API_KEY=sk-xxx mini-claude --api-base https://aihubmix.com/v1 --model gpt-4o "hello"
-  mini-claude --resume
-  mini-claude  # starts interactive REPL
-""")
-        sys.exit(0)
-
-    permission_mode = _resolve_permission_mode(args)
-    model = args.model or os.environ.get("MINI_CLAUDE_MODEL", "claude-opus-4-6")
-    api_base = args.api_base
+    permission_mode = "default"
+    model = os.environ.get("MINI_MODEL")
 
     # Resolve API config
-    resolved_api_base = api_base
-    resolved_api_key: str | None = None
-    resolved_use_openai = bool(api_base)
+    api_base: str | None = None
+    api_key: str | None = None
 
     if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_BASE_URL"):
-        resolved_api_key = os.environ["OPENAI_API_KEY"]
-        resolved_api_base = resolved_api_base or os.environ.get("OPENAI_BASE_URL")
-        resolved_use_openai = True
-    elif os.environ.get("ANTHROPIC_API_KEY"):
-        resolved_api_key = os.environ["ANTHROPIC_API_KEY"]
-        resolved_api_base = resolved_api_base or os.environ.get("ANTHROPIC_BASE_URL")
-        resolved_use_openai = False
-    elif os.environ.get("OPENAI_API_KEY"):
-        resolved_api_key = os.environ["OPENAI_API_KEY"]
-        resolved_api_base = resolved_api_base or os.environ.get("OPENAI_BASE_URL")
-        resolved_use_openai = True
+        api_key = os.environ["OPENAI_API_KEY"]
+        api_base = os.environ.get("OPENAI_BASE_URL")
 
-    if not resolved_api_key and api_base:
-        resolved_api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-        resolved_use_openai = True
-
-    if not resolved_api_key:
+    if not api_key or not api_base:
         print_error(
             "API key is required.\n"
-            "  Set ANTHROPIC_API_KEY (+ optional ANTHROPIC_BASE_URL) for Anthropic format,\n"
-            "  or OPENAI_API_KEY + OPENAI_BASE_URL for OpenAI-compatible format."
+            "  Set OPENAI_API_KEY + OPENAI_BASE_URL for OpenAI-compatible format."
         )
         sys.exit(1)
 
     agent = Agent(
         permission_mode=permission_mode,
         model=model,
-        thinking=args.thinking,
-        max_cost_usd=args.max_cost,
-        max_turns=args.max_turns,
-        api_base=resolved_api_base if resolved_use_openai else None,
-        anthropic_base_url=resolved_api_base if not resolved_use_openai else None,
-        api_key=resolved_api_key,
+        thinking=True,
+        api_base=api_base,
+        api_key=api_key,
     )
-
-    # Resume session
-    if args.resume:
-        session_id = get_latest_session_id()
-        if session_id:
-            session = load_session(session_id)
-            if session:
-                agent.restore_session({
-                    "anthropicMessages": session.get("anthropicMessages"),
-                    "openaiMessages": session.get("openaiMessages"),
-                })
-            else:
-                print_info("No session found to resume.")
-        else:
-            print_info("No previous sessions found.")
-
-    prompt = " ".join(args.prompt) if args.prompt else None
-
-    if prompt:
-        # One-shot mode
-        try:
-            asyncio.run(agent.chat(prompt))
-        except Exception as e:
-            print_error(str(e))
-            sys.exit(1)
-    else:
-        # Interactive REPL
-        asyncio.run(run_repl(agent))
+    # Interactive REPL
+    asyncio.run(run_repl(agent))
 
 
 if __name__ == "__main__":

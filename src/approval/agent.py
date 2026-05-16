@@ -158,7 +158,6 @@ class Agent:
             permission_mode: str = "default",
             model: str = "claude-opus-4-6",
             api_base: str | None = None,
-            anthropic_base_url: str | None = None,
             api_key: str | None = None,
             thinking: bool = False,
             max_cost_usd: float | None = None,
@@ -171,7 +170,6 @@ class Agent:
         self.permission_mode = permission_mode
         self.thinking = thinking
         self.model = model
-        self.use_openai = bool(api_base)
         self.is_sub_agent = is_sub_agent
         self.tools = custom_tools or tool_definitions
         self.max_cost_usd = max_cost_usd
@@ -217,10 +215,6 @@ class Agent:
         self._already_surfaced_memories: set[str] = set()
         self._session_memory_bytes = 0
 
-        # Separate message histories
-        self._anthropic_messages: list[dict] = []
-        self._openai_messages: list[dict] = []
-
         # Build system prompt
         self._base_system_prompt = custom_system_prompt or build_system_prompt()
         if self.permission_mode == "plan":
@@ -228,20 +222,10 @@ class Agent:
             self._system_prompt = self._base_system_prompt + self._build_plan_mode_prompt()
         else:
             self._system_prompt = self._base_system_prompt
-
         # Initialize clients
-        if self.use_openai:
-            self._openai_client = openai.AsyncOpenAI(base_url=api_base, api_key=api_key)
-            self._anthropic_client = None
-            self._openai_messages.append({"role": "system", "content": self._system_prompt})
-        else:
-            kwargs: dict[str, Any] = {}
-            if api_key:
-                kwargs["api_key"] = api_key
-            if anthropic_base_url:
-                kwargs["base_url"] = anthropic_base_url
-            self._anthropic_client = anthropic.AsyncAnthropic(**kwargs)
-            self._openai_client = None
+        self._openai_client = openai.AsyncOpenAI(base_url=api_base, api_key=api_key)
+        self._openai_messages: list[dict] = []
+        self._openai_messages.append({"role": "system", "content": self._system_prompt})
 
     def _resolve_thinking_mode(self) -> str:
         if not self.thinking:
@@ -340,7 +324,7 @@ class Agent:
                 print(f"[mcp] Init failed: {e}", flush=True)
 
         self._aborted = False
-        coro = self._chat_openai(user_message) if self.use_openai else self._chat_anthropic(user_message)
+        coro = self._chat_openai(user_message)
         self._current_task = asyncio.current_task()
         try:
             await coro
@@ -380,10 +364,8 @@ class Agent:
     # ─── REPL commands ────────────────────────────────────────
 
     def clear_history(self) -> None:
-        self._anthropic_messages = []
         self._openai_messages = []
-        if self.use_openai:
-            self._openai_messages.append({"role": "system", "content": self._system_prompt})
+        self._openai_messages.append({"role": "system", "content": self._system_prompt})
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.last_input_token_count = 0
@@ -413,14 +395,12 @@ class Agent:
     # ─── Session ──────────────────────────────────────────────
 
     def restore_session(self, data: dict) -> None:
-        if data.get("anthropicMessages"):
-            self._anthropic_messages = data["anthropicMessages"]
         if data.get("openaiMessages"):
             self._openai_messages = data["openaiMessages"]
         print_info(f"Session restored ({self._get_message_count()} messages).")
 
     def _get_message_count(self) -> int:
-        return len(self._openai_messages) if self.use_openai else len(self._anthropic_messages)
+        return len(self._openai_messages)
 
     def _auto_save(self) -> None:
         try:
@@ -432,8 +412,7 @@ class Agent:
                     "startTime": self.session_start_time,
                     "messageCount": self._get_message_count(),
                 },
-                "anthropicMessages": self._anthropic_messages if not self.use_openai else None,
-                "openaiMessages": self._openai_messages if self.use_openai else None,
+                "openaiMessages": self._openai_messages
             })
         except Exception:
             pass

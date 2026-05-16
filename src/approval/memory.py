@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from minicode.frontmatter import parse_frontmatter, format_frontmatter
+from approval.frontmatter import parse_frontmatter, format_frontmatter
 
 # A callable that sends a prompt and returns model text response.
 # Signature: async (system: str, user_message: str) -> str
