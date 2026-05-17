@@ -349,7 +349,7 @@ def _grep_search(inp: dict) -> str:
     # Try system grep first (Linux/macOS)
     if not IS_WIN:
         try:
-            args = ["grep", "--line-number", "--color=never", "-r"]
+            args = ["grep", "-E", "--line-number", "--color=never", "-r"]  # 引入 -E 支持竖线或
             if include:
                 args.append(f"--include={include}")
             args.extend(["--", pattern, path])
@@ -362,7 +362,7 @@ def _grep_search(inp: dict) -> str:
                 lines = [l for l in result.stdout.split("\n") if l]
                 output = "\n".join(lines[:100])
                 if len(lines) > 100:
-                    output += f"\n... and {len(lines) - 100} more matches"
+                    output += f"\n... and {len(lines) - 100} more matches" # \n...以及{len(lines) - 100}个匹配项
                 return output
             # Non-zero exit (not 1) — fall through to Python fallback
         except Exception:

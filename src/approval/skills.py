@@ -39,14 +39,9 @@ def discover_skills() -> list[SkillDefinition]:
 
     skills: dict[str, SkillDefinition] = {}
 
-    # User-level skills (lower priority)
-    user_dir = Path.home() / ".claude" / "skills"
-    print_info(user_dir)
-    _load_skills_from_dir(user_dir, "user", skills)
-
     # Project-level skills (higher priority, overwrites)
     project_dir = Path.cwd() / "skills"
-    print_info(project_dir)
+    print_info(str(project_dir))
     _load_skills_from_dir(project_dir, "project", skills)
 
     _cached_skills = list(skills.values())
@@ -159,9 +154,9 @@ def build_skill_descriptions() -> str:
     auto_only = [s for s in skills if not s.user_invocable]
 
     if invocable:
-        lines.append("User-invocable skills (user types /<name> to invoke):")
+        lines.append("User-invocable skills (user types <name> to invoke):")
         for s in invocable:
-            lines.append(f"- **/{s.name}**: {s.description}")
+            lines.append(f"- **{s.name}**: {s.description}")
             if s.when_to_use:
                 lines.append(f"  When to use: {s.when_to_use}")
         lines.append("")
