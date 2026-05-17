@@ -9,21 +9,92 @@ import signal
 import sys
 
 from approval.agent import Agent
-from approval.ui import print_welcome, print_user_prompt, print_error, print_info, print_plan_for_approval, \
+from approval.ui import print_welcome, print_error, print_info, print_plan_for_approval, \
     print_plan_approval_options
 from approval.memory import list_memories
 from approval.skills import discover_skills, resolve_skill_prompt, get_skill_by_name, execute_skill
 from dotenv import load_dotenv
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import ANSI
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.patch_stdout import patch_stdout
+
 load_dotenv()
+
+
+def _build_prompt_session() -> PromptSession:
+    """Create a robust prompt session that handles multi-line paste safely.
+
+    Key behaviors:
+    - Bracketed-paste is enabled by default in prompt_toolkit, so a multi-line
+      paste is treated as a single input (no premature submit on the first
+      newline).
+    - Pressing Enter submits the input. To insert an explicit newline use
+      Alt+Enter (or Esc then Enter), or end a line with a single backslash "\".
+    - Trailing backslash continuation: lines ending with "\" stay in edit mode
+      and the backslash is stripped on submit.
+    - Ctrl+J always inserts a newline (handy on terminals that swallow Alt).
+    """
+
+    bindings = KeyBindings()
+
+    @bindings.add("enter")
+    def _(event) -> None:
+        buf = event.current_buffer
+        doc = buf.document
+        text = doc.text
+
+        # If we are inside a bracketed paste, prompt_toolkit handles it
+        # internally — this handler only fires for real key presses.
+
+        # Backslash line continuation: trim the trailing "\" and insert newline.
+        if doc.current_line.endswith("\\"):
+            # Remove the trailing backslash on the current line, then newline.
+            buf.delete_before_cursor(1)
+            buf.insert_text("\n")
+            return
+
+        # If the buffer already contains newlines (e.g. from a paste or
+        # explicit Alt+Enter), submit on Enter.
+        # If it's a single line, also submit on Enter (normal behavior).
+        if text.strip() == "":
+            # Empty / whitespace-only input — keep the line but do not submit.
+            buf.insert_text("\n")
+            return
+
+        buf.validate_and_handle()
+
+    @bindings.add("escape", "enter")
+    def _(event) -> None:
+        """Alt+Enter (a.k.a. Esc, Enter) inserts a newline."""
+        event.current_buffer.insert_text("\n")
+
+    @bindings.add("c-j")
+    def _(event) -> None:
+        """Ctrl+J inserts a newline."""
+        event.current_buffer.insert_text("\n")
+
+    return PromptSession(
+        multiline=True,
+        key_bindings=bindings,
+        history=InMemoryHistory(),
+        mouse_support=False,
+        enable_history_search=True,
+        # Show a minimal prompt; the welcome banner already explains usage.
+        # Using ANSI keeps color compatible with the existing UI style.
+    )
 
 
 async def run_repl(agent: Agent) -> None:
     """Interactive REPL loop."""
 
+    session = _build_prompt_session()
+
     async def confirm_fn(message: str) -> bool:
         try:
-            answer = input("  Allow? (y/n): ")
+            answer = await asyncio.to_thread(input, "  Allow? (y/n): ")
             return answer.lower().startswith("y")
         except EOFError:
             return False
@@ -35,7 +106,7 @@ async def run_repl(agent: Agent) -> None:
         print_plan_approval_options()
         while True:
             try:
-                choice = input("  Enter choice (1-4): ").strip()
+                choice = (await asyncio.to_thread(input, "  Enter choice (1-4): ")).strip()
             except EOFError:
                 return {"choice": "manual-execute"}
             if choice == "1":
@@ -46,7 +117,7 @@ async def run_repl(agent: Agent) -> None:
                 return {"choice": "manual-execute"}
             elif choice == "4":
                 try:
-                    feedback = input("  Feedback (what to change): ").strip()
+                    feedback = (await asyncio.to_thread(input, "  Feedback (what to change): ")).strip()
                 except EOFError:
                     feedback = ""
                 return {"choice": "keep-planning", "feedback": feedback or None}
@@ -64,27 +135,43 @@ async def run_repl(agent: Agent) -> None:
             agent.abort()
             print("\n  (interrupted)")
             sigint_count = 0
-            print_user_prompt()
         else:
             sigint_count += 1
             if sigint_count >= 2:
                 print("\nBye!\n")
                 sys.exit(0)
             print("\n  Press Ctrl+C again to exit.")
-            print_user_prompt()
 
     signal.signal(signal.SIGINT, handle_sigint)
     print_welcome()
+    print_info(
+        "Multi-line input: paste freely, use Alt+Enter (or end a line with \\) "
+        "to add a newline. Press Enter to submit."
+    )
+
+    # ANSI-colored prompt that matches print_user_prompt() styling.
+    prompt_text = ANSI("\n\x1b[1;32m> \x1b[0m")
 
     while True:
-        print_user_prompt()
         try:
-            line = input()
-        except (EOFError, KeyboardInterrupt):
+            # patch_stdout ensures concurrent prints don't corrupt the prompt.
+            with patch_stdout(raw=True):
+                line = await session.prompt_async(prompt_text)
+        except KeyboardInterrupt:
+            # Ctrl+C at the prompt: clear current input and continue.
+            sigint_count += 1
+            if sigint_count >= 2:
+                print("\nBye!\n")
+                break
+            print("  Press Ctrl+C again to exit.")
+            continue
+        except EOFError:
+            # Ctrl+D
             print("\nBye!\n")
             break
 
-        inp = line.strip()
+        # Normalize: strip outer whitespace but preserve internal newlines.
+        inp = line.strip() if line is not None else ""
         sigint_count = 0
 
         if not inp:
