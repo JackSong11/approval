@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from approval.frontmatter import parse_frontmatter
+from approval.ui import print_info
 
 
 # ─── Types ──────────────────────────────────────────────────
@@ -40,10 +41,12 @@ def discover_skills() -> list[SkillDefinition]:
 
     # User-level skills (lower priority)
     user_dir = Path.home() / ".claude" / "skills"
+    print_info(user_dir)
     _load_skills_from_dir(user_dir, "user", skills)
 
     # Project-level skills (higher priority, overwrites)
-    project_dir = Path.cwd() / ".claude" / "skills"
+    project_dir = Path.cwd() / "skills"
+    print_info(project_dir)
     _load_skills_from_dir(project_dir, "project", skills)
 
     _cached_skills = list(skills.values())
