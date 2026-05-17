@@ -115,12 +115,12 @@ tool_definitions: list[ToolDef] = [
     },
     {
         "name": "skill",
-        "description": "Invoke a registered skill by name. Skills are prompt templates loaded from .claude/skills/. Returns the skill's resolved prompt to follow.",
+        "description": "Invoke a registered skill by name. Skills are prompt templates loaded from skills/. Returns the skill's resolved prompt to follow.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "skill_name": {"type": "string", "description": "The name of the skill to invoke"},
-                "args": {"type": "string", "description": "Optional arguments to pass to the skill"},
+                # "args": {"type": "string", "description": "Optional arguments to pass to the skill"},
             },
             "required": ["skill_name"],
         },
