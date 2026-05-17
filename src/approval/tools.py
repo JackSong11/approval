@@ -39,11 +39,13 @@ ToolDef = dict  # Anthropic tool schema dict
 tool_definitions: list[ToolDef] = [
     {
         "name": "read_file",
-        "description": "Read the contents of a file. Returns the file content with line numbers.",
+        "description": "Read the contents of a file. Returns the file content with line numbers. You can optionally specify a line range using start_line and end_line.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "file_path": {"type": "string", "description": "The path to the file to read"},
+                "start_line": {"type": "integer", "description": "The 1-based line number to start reading from (inclusive). Optional."},
+                "end_line": {"type": "integer", "description": "The 1-based line number to stop reading at (inclusive). Optional."},
             },
             "required": ["file_path"],
         },
@@ -213,8 +215,29 @@ def _read_file(inp: dict) -> str:
     try:
         content = Path(inp["file_path"]).read_text()
         lines = content.split("\n")
-        numbered = "\n".join(f"{i + 1:4d} | {line}" for i, line in enumerate(lines))
-        return numbered
+        total_lines = len(lines)
+
+        # 获取可选的行号参数（1-based 转化为 0-based 索引）
+        start_line = inp.get("start_line")
+        end_line = inp.get("end_line")
+
+        start_idx = max(0, int(start_line) - 1) if start_line is not None else 0
+        end_idx = min(total_lines, int(end_line)) if end_line is not None else total_lines
+
+        if start_idx >= total_lines or start_idx > end_idx:
+            return f"Error: Invalid line range {start_line}-{end_line} for file with {total_lines} lines."
+
+        # 切片截取
+        sliced_lines = lines[start_idx:end_idx]
+
+        # 渲染带行号的文本
+        # 注意：为了让 AI 知道真实的绝对行号，enumerate 的 start 要传入 start_idx + 1
+        numbered = "\n".join(f"{i + start_idx + 1:4d} | {line}" for i, line in enumerate(sliced_lines))
+
+        # 加上范围小提示，方便 AI 辨认
+        header = f"--- Reading {inp['file_path']} (Lines {start_idx + 1} to {end_idx} of {total_lines}) ---\n"
+        return header + numbered
+
     except Exception as e:
         return f"Error reading file: {e}"
 
