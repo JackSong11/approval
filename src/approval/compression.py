@@ -33,7 +33,7 @@ SNIP_THRESHOLD = 0.60  # 上下文利用率超过该比例时开始 snip
 MICROCOMPACT_IDLE_S = 5 * 60  # 空闲超过 5 分钟触发 microcompact
 KEEP_RECENT_RESULTS = 3  # 始终保留最近 N 个工具结果原文
 
-LARGE_RESULT_THRESHOLD_BYTES = 30 * 1024  # 单个工具结果超过 30KB 写盘
+LARGE_RESULT_THRESHOLD_BYTES = 30 * 1024  # 单个工具结果超过 30KB 写盘（txt文件，4万字符大概100KB。所以30KB纯英文是3万字左右，纯中文是1万字左右）
 LARGE_RESULT_PREVIEW_LINES = 200
 
 
@@ -155,7 +155,7 @@ def run_compression_pipeline(
 # read_file to retrieve the full output later — no information is lost.
 # ─── 大型结果持久化 ───────────────────────────────────
 # 当工具结果超过 30 KB 时，将其写入磁盘并替换
-# 上下文条目，替换为简短预览 + 文件路径。模型稍后可以使用
+# 上下文条目，替换为简短预览（200行） + 文件路径。模型稍后可以使用
 # read_file 函数检索完整输出——不会丢失任何信息。
 
 
@@ -164,7 +164,7 @@ def persist_large_result(tool_name: str, result: str) -> str:
     if len(result.encode()) <= LARGE_RESULT_THRESHOLD_BYTES:
         return result
 
-    d = Path.home() / ".mini-claude" / "tool-results"
+    d = Path.home() / "tool-results"
     d.mkdir(parents=True, exist_ok=True)
     filename = f"{int(time.time() * 1000)}-{tool_name}.txt"
     filepath = d / filename
