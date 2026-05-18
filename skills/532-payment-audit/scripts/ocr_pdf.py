@@ -3,35 +3,39 @@ import sys
 import tempfile
 import requests
 import fitz  # PyMuPDF
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import VlmPipelineOptions
+from docling.datamodel.pipeline_options_vlm_model import ApiVlmOptions, ResponseFormat
+from docling.pipeline.vlm_pipeline import VlmPipeline
+from docling.document_converter import DocumentConverter, PdfFormatOption
 
+def _create_converter():
+    api_key = os.getenv("JOY_BUILDER_API_KEY")
+    api_base = os.getenv("JOY_BUILDER_BASE_URL")
 
-# def _create_converter():
-#     api_key = os.getenv("JOY_BUILDER_API_KEY")
-#     api_base = os.getenv("JOY_BUILDER_BASE_URL")
-#
-#     if not api_key or not api_base:
-#         # 错误信息重定向到 stderr，不影响 stdout 的结果返回
-#         sys.stderr.write("Error: Environmental variables JOY_BUILDER_API_KEY/BASE_URL not set.\n")
-#         sys.exit(1)
-#
-#     vlm_options = ApiVlmOptions(
-#         url=f"{api_base}/chat/completions",
-#         params=dict(model="DeepSeek-OCR", temperature=0.0),
-#         headers={"Authorization": f"Bearer {api_key}"},
-#         prompt="<image>\nPlease perform OCR on this image and output the extracted text in Markdown format.",
-#         timeout=600,
-#         scale=2.0,
-#         response_format=ResponseFormat.MARKDOWN,
-#     )
-#
-#     return DocumentConverter(
-#         format_options={
-#             InputFormat.PDF: PdfFormatOption(
-#                 pipeline_options=VlmPipelineOptions(enable_remote_services=True, vlm_options=vlm_options),
-#                 pipeline_cls=VlmPipeline,
-#             )
-#         }
-#     )
+    if not api_key or not api_base:
+        # 错误信息重定向到 stderr，不影响 stdout 的结果返回
+        sys.stderr.write("Error: Environmental variables JOY_BUILDER_API_KEY/BASE_URL not set.\n")
+        sys.exit(1)
+
+    vlm_options = ApiVlmOptions(
+        url=f"{api_base}/chat/completions",
+        params=dict(model="DeepSeek-OCR", temperature=0.0),
+        headers={"Authorization": f"Bearer {api_key}"},
+        prompt="<image>\nPlease perform OCR on this image and output the extracted text in Markdown format.",
+        timeout=600,
+        scale=2.0,
+        response_format=ResponseFormat.MARKDOWN,
+    )
+
+    return DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(
+                pipeline_options=VlmPipelineOptions(enable_remote_services=True, vlm_options=vlm_options),
+                pipeline_cls=VlmPipeline,
+            )
+        }
+    )
 
 
 def identify_pdf_type(file_path, threshold=10):
@@ -73,11 +77,11 @@ def main():
             # 电子档直接拼凑文本输出
             result_text = "\n\n".join([page.get_text().strip() for page in doc])
             doc.close()
-        # else:
+        else:
             # 扫描件调用 OCR
-            # converter = _create_converter()
-            # conv_res = converter.convert(input_source)
-            # result_text = conv_res.document.export_to_markdown()
+            converter = _create_converter()
+            conv_res = converter.convert(input_source)
+            result_text = conv_res.document.export_to_markdown()
 
         # 3. 最终通过 stdout 返回，bash 可以直接捕获
         sys.stdout.write(result_text)

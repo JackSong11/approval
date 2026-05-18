@@ -33,7 +33,7 @@ SNIP_THRESHOLD = 0.60  # 上下文利用率超过该比例时开始 snip
 MICROCOMPACT_IDLE_S = 5 * 60  # 空闲超过 5 分钟触发 microcompact
 KEEP_RECENT_RESULTS = 3  # 始终保留最近 N 个工具结果原文
 
-LARGE_RESULT_THRESHOLD_BYTES = 30 * 1024  # 单个工具结果超过 30KB 写盘（txt文件，4万字符大概100KB。所以30KB纯英文是3万字左右，纯中文是1万字左右）
+LARGE_RESULT_THRESHOLD_BYTES = 120 * 1024  # 单个工具结果超过 30KB 写盘（txt文件，4万字符大概100KB。所以30KB纯英文是3万字左右，纯中文是1万字左右）
 LARGE_RESULT_PREVIEW_LINES = 200
 
 

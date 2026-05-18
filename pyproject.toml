@@ -18,6 +18,7 @@ dependencies = [
     "prompt-toolkit>=3.0.43",
     "rich>=15.0.0",
     "pymupdf>=1.27.2.3",
+    "docling[vlm]>=2.93.0",
 ]
 
 [project.scripts]
