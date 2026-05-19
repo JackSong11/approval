@@ -1,5 +1,5 @@
 """Tool definitions and execution — 10 tools with 5 permission modes.
-Mirrors Claude Code's tool system: read_file, write_file, edit_file, list_files,
+Mirrors Claude Code's tool system: read_file, write_file, list_files,
 grep_search, run_shell, skill, enter/exit_plan_mode, agent."""
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from approval.memory import get_memory_dir
 PermissionMode = str  # "default" | "plan" | "acceptEdits" | "bypassPermissions" | "dontAsk"
 
 READ_TOOLS = {"read_file", "list_files", "grep_search"}
-EDIT_TOOLS = {"write_file", "edit_file"}
+EDIT_TOOLS = {"write_file"}
 
 # Concurrency-safe tools can run in parallel (read-only, no side effects)
 CONCURRENCY_SAFE_TOOLS = {"read_file", "list_files", "grep_search"}
@@ -60,19 +60,6 @@ tool_definitions: list[ToolDef] = [
                 "content": {"type": "string", "description": "The content to write to the file"},
             },
             "required": ["file_path", "content"],
-        },
-    },
-    {
-        "name": "edit_file",
-        "description": "Edit a file by replacing an exact string match with new content. The old_string must match exactly (including whitespace and indentation).",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "file_path": {"type": "string", "description": "The path to the file to edit"},
-                "old_string": {"type": "string", "description": "The exact string to find and replace"},
-                "new_string": {"type": "string", "description": "The string to replace it with"},
-            },
-            "required": ["file_path", "old_string", "new_string"],
         },
     },
     {
@@ -315,29 +302,6 @@ def _generate_diff(old_content: str, old_string: str, new_string: str) -> str:
     for l in new_lines:
         parts.append(f"+ {l}")
     return "\n".join(parts)
-
-
-def _edit_file(inp: dict) -> str:
-    try:
-        path = Path(inp["file_path"])
-        content = path.read_text()
-
-        actual = _find_actual_string(content, inp["old_string"])
-        if not actual:
-            return f"Error: old_string not found in {inp['file_path']}"
-
-        count = content.count(actual)
-        if count > 1:
-            return f"Error: old_string found {count} times in {inp['file_path']}. Must be unique."
-
-        new_content = content.replace(actual, inp["new_string"], 1)
-        path.write_text(new_content)
-
-        diff = _generate_diff(content, actual, inp["new_string"])
-        quote_note = " (matched via quote normalization)" if actual != inp["old_string"] else ""
-        return f"Successfully edited {inp['file_path']}{quote_note}\n\n{diff}"
-    except Exception as e:
-        return f"Error editing file: {e}"
 
 
 def _list_files(inp: dict) -> str:
@@ -605,9 +569,6 @@ def check_permission(
     elif tool_name == "write_file" and not Path(inp.get("file_path", "")).exists():
         needs_confirm = True
         confirm_message = f"write new file: {inp.get('file_path', '')}"
-    elif tool_name == "edit_file" and not Path(inp.get("file_path", "")).exists():
-        needs_confirm = True
-        confirm_message = f"edit non-existent file: {inp.get('file_path', '')}"
 
     if needs_confirm:
         if mode == "dontAsk":
@@ -652,7 +613,7 @@ async def execute_tool(
                 pass
         return _truncate_result(result)
 
-    if name in ("write_file", "edit_file") and read_file_state is not None:
+    if name in ("write_file") and read_file_state is not None:
         abs_path = str(Path(inp["file_path"]).resolve())
         if os.path.exists(abs_path):
             if abs_path not in read_file_state:
@@ -682,7 +643,6 @@ async def execute_tool(
 
     handlers: dict = {
         "write_file": _write_file,
-        "edit_file": _edit_file,
         "list_files": _list_files,
         "grep_search": _grep_search,
         "run_shell": _run_shell,
@@ -693,7 +653,7 @@ async def execute_tool(
     result = _truncate_result(handler(inp))
 
     # Update mtime after successful write/edit
-    if name in ("write_file", "edit_file") and read_file_state is not None and not result.startswith("Error"):
+    if name in ("write_file") and read_file_state is not None and not result.startswith("Error"):
         abs_path = str(Path(inp["file_path"]).resolve())
         try:
             read_file_state[abs_path] = os.path.getmtime(abs_path)
