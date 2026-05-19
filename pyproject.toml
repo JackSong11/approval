@@ -19,6 +19,7 @@ dependencies = [
     "rich>=15.0.0",
     "pymupdf>=1.27.2.3",
     "docling[vlm]>=2.93.0",
+    "pytest>=9.0.3",
 ]
 
 [project.scripts]
