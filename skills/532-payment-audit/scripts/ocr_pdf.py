@@ -8,10 +8,14 @@ from docling.datamodel.pipeline_options import VlmPipelineOptions
 from docling.datamodel.pipeline_options_vlm_model import ApiVlmOptions, ResponseFormat
 from docling.pipeline.vlm_pipeline import VlmPipeline
 from docling.document_converter import DocumentConverter, PdfFormatOption
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def _create_converter():
-    api_key = os.getenv("JOY_BUILDER_API_KEY")
-    api_base = os.getenv("JOY_BUILDER_BASE_URL")
+    api_key = os.getenv("OPENAI_API_KEY")
+    api_base = os.getenv("OPENAI_BASE_URL")
 
     if not api_key or not api_base:
         # 错误信息重定向到 stderr，不影响 stdout 的结果返回
@@ -20,10 +24,10 @@ def _create_converter():
 
     vlm_options = ApiVlmOptions(
         url=f"{api_base}/chat/completions",
-        params=dict(model="DeepSeek-OCR", temperature=0.0),
+        params=dict(model="mineru25-2509-1-2B", temperature=0.0),
         headers={"Authorization": f"Bearer {api_key}"},
         prompt="<image>\nPlease perform OCR on this image and output the extracted text in Markdown format.",
-        timeout=600,
+        timeout=6000,
         scale=2.0,
         response_format=ResponseFormat.MARKDOWN,
     )
@@ -80,7 +84,7 @@ def main():
         else:
             # 扫描件调用 OCR
             converter = _create_converter()
-            conv_res = converter.convert(input_source)
+            conv_res = converter.convert(local_path)
             result_text = conv_res.document.export_to_markdown()
 
         # 3. 最终通过 stdout 返回，bash 可以直接捕获
