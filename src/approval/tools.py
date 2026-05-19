@@ -437,7 +437,7 @@ def _grep_python(pattern: str, directory: str, include: str | None) -> str:
 
 def _run_shell(inp: dict) -> str:
     try:
-        timeout_ms = inp.get("timeout", 30000)
+        timeout_ms = inp.get("timeout", 120000)
         timeout_s = timeout_ms / 1000
         result = subprocess.run(
             inp["command"],

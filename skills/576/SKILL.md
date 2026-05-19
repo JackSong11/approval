@@ -1,6 +1,6 @@
 ---
 name: 576
-description: 业务类型为576的审核规则。
+description: 单据的业务类型字段为576时，优先使用此skill解决问题。
 ---
 
 # 576 Skill
@@ -14,6 +14,17 @@ description: 业务类型为576的审核规则。
 3. 将审核单据的字段、审核点要求与OCR提取的合同文本内容进行深度对比验证。
 4. 生成审核结果，包括是否通过（isAccess）和审核意见（auditOpinion）。
 
+## 调用示例 (Few-shot)
+
+### 示例 1: 下载并审核 576 单据
+**输入信息**:
+- `附件地址(多个,号分割)`:`http://storage.jd.local/chaos-sett.jr/chaos_file_import/1776327346657-2247052552478228480.pdf`
+
+**Agent 动作**:
+
+# 第一步：获取附件中url地址，然后调用OCR脚本
+python3 ${CLAUDE_SKILL_DIR}/scripts/ocr_pdf.py "xxx.pdf"
+
 ## 脚本依赖
-本技能依赖以下两个脚本，位于`${CLAUDE_SKILL_DIR}/scripts/`目录下：
+本技能依赖以下一个脚本，位于`${CLAUDE_SKILL_DIR}/scripts/`目录下：
 - `${CLAUDE_SKILL_DIR}/scripts/ocr_pdf.py`：负责对PDF文件进行OCR识别，提取文本内容

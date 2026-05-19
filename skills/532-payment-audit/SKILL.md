@@ -1,6 +1,6 @@
 ---
 name: 532-payment-audit
-description: 业务类型为532（聚合支付）的审核规则。
+description: 单据的业务类型字段为532时，优先使用此skill解决问题。
 ---
 
 # 532-payment-audit Skill
